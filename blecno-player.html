@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advanced HTML Video Player — 1440×900 Fullscreen</title>
+<style>
+  :root{
+    --bg:#071018; --panel:#0f1417; --muted:#9aa3ad; --accent:#1db954; --accent-2:#3aa0ff;
+    --glass:rgba(255,255,255,0.03); --radius:12px; --ui-font:Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    --control-height:84px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:linear-gradient(180deg,#071018,#0b0f13);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--ui-font);
+    color:#e6eef3;
+    padding:20px;
+  }
+
+  /* Player container */
+  .player {
+    width:100%;
+    max-width:1100px;
+    border-radius:var(--radius);
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    box-shadow:0 12px 40px rgba(0,0,0,0.6);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    transition:width .18s ease, height .18s ease;
+  }
+
+  /* When player is fullscreen, force 1440x900 */
+  #player:fullscreen {
+    width:1440px !important;
+    height:900px !important;
+    max-width:none !important;
+    max-height:none !important;
+    border-radius:0 !important;
+  }
+  /* also for webkit fullscreen */
+  #player:-webkit-full-screen {
+    width:1440px !important;
+    height:900px !important;
+    max-width:none !important;
+    max-height:none !important;
+    border-radius:0 !important;
+  }
+
+  /* Video area */
+  .video-wrap{
+    position:relative;
+    background:#000;
+    min-height:520px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #video{
+    width:100%;
+    height:auto;
+    display:block;
+    background:#000;
+    outline:none;
+    max-height:calc(900px - var(--control-height));
+    object-fit:contain;
+  }
+
+  /* Subtitle overlay */
+  .subtitle-overlay{
+    position:absolute;
+    left:0;
+    right:0;
+    bottom:calc(var(--control-height) + 6%);
+    pointer-events:none;
+    display:flex;
+    justify-content:center;
+    padding:0 20px;
+    transition:bottom .18s ease;
+  }
+  .subtitle-text{
+    max-width:90%;
+    text-align:center;
+    font-size:20px;
+    line-height:1.2;
+    color:#fff;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    background:rgba(0,0,0,0.35);
+    padding:8px 14px;
+    border-radius:8px;
+    pointer-events:none;
+    white-space:pre-wrap;
+  }
+
+  /* Controls area */
+  .controls{
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+  }
+
+  .topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+  }
+
+  .left, .right{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+
+  /* Icon-only buttons */
+  .icon-btn{
+    width:44px;
+    height:44px;
+    border-radius:10px;
+    background:linear-gradient(180deg,#111417,#0b0d0f);
+    border:1px solid rgba(255,255,255,0.03);
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    color:var(--muted);
+    transition:transform .12s, background .12s;
+  }
+  .icon-btn:hover{ transform:translateY(-3px); color:#fff; }
+
+  .label-btn{
+    padding:8px 12px;
+    border-radius:10px;
+    background:linear-gradient(180deg,#111417,#0b0d0f);
+    border:1px solid rgba(255,255,255,0.03);
+    color:var(--muted);
+    cursor:pointer;
+  }
+
+  .speed-group{display:flex;gap:6px;flex-wrap:wrap}
+  .speed{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:6px 8px;border-radius:8px;cursor:pointer;font-weight:700}
+  .speed.active{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#061014;border:0}
+
+  /* Smooth timeline (main) */
+  .time-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .timeline{
+    position:relative;
+    height:14px;
+    width:100%;
+    border-radius:999px;
+    background:linear-gradient(90deg,#1b1e21,#0b0d0f);
+    cursor:pointer;
+    overflow:hidden;
+  }
+  .timeline .buffer{
+    position:absolute;
+    left:0;top:0;bottom:0;
+    background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    width:0%;
+    transition:width .25s linear;
+  }
+  .timeline .progress{
+    position:absolute;
+    left:0;top:0;bottom:0;
+    background:linear-gradient(90deg,var(--accent),var(--accent-2));
+    width:0%;
+    transition:width .12s linear;
+  }
+  .timeline .thumb{
+    position:absolute;
+    top:50%;
+    transform:translate(-50%,-50%);
+    width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.6);
+    left:0%;
+    transition:left .08s linear;
+  }
+
+  /* Fullscreen bottom control panel (fuller full screen mode) */
+  .fullscreen-controls {
+    display:none;
+    position:fixed;
+    left:0;right:0;bottom:0;
+    height:var(--control-height);
+    background:linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0.6));
+    backdrop-filter: blur(6px);
+    padding:12px 18px;
+    align-items:center;
+    gap:12px;
+    z-index:9999;
+  }
+  .fullscreen-controls .left, .fullscreen-controls .center, .fullscreen-controls .right{
+    display:flex;align-items:center;gap:10px;
+  }
+  .fullscreen-controls .center{flex:1;align-items:center}
+
+  /* Playlist */
+  .playlist{display:flex;gap:8px;overflow:auto;padding:6px}
+  .pl-item{min-width:120px;background:linear-gradient(180deg,#0b0d0f,#071014);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);color:var(--muted);font-size:13px;cursor:pointer}
+  .pl-item.active{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#061014}
+
+  /* Shortcuts modal */
+  .modal{
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,11,0.6);z-index:60;
+  }
+  .modal.open{display:flex}
+  .modal-card{
+    width:92%;max-width:820px;background:linear-gradient(180deg,#0f1416,#0b0d0f);border-radius:12px;padding:18px;color:#eaf3f8;
+    box-shadow:0 20px 60px rgba(0,0,0,0.7);
+  }
+  .modal-grid{display:grid;grid-template-columns:1fr;gap:12px}
+  .shortcut-row{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+  .shortcut-row input[type="text"]{width:220px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
+  .muted{color:var(--muted);font-size:13px}
+  @media (max-width:880px){
+    .video-wrap{min-height:260px}
+    .subtitle-text{font-size:16px}
+    .fullscreen-controls{height:72px}
+  }
+</style>
+</head>
+<body>
+  <div class="player" id="player">
+    <div class="video-wrap" id="videoWrap">
+      <video id="video" playsinline webkit-playsinline></video>
+
+      <!-- Subtitle overlay -->
+      <div class="subtitle-overlay" id="subtitleOverlay" aria-hidden="true">
+        <div class="subtitle-text" id="subtitleText" style="display:none"></div>
+      </div>
+    </div>
+ 
+<!-- Main controls -->
+    <div class="controls" id="controls">
+      <div class="topbar">
+        <div class="left">
+          <!-- Play / Pause (new icon set) -->
+          <button class="icon-btn" id="playPause" title="Play / Pause (Space)">
+            <svg id="playIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M5 3v18l15-9L5 3z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <!-- Seek back 10s -->
+          <button class="icon-btn" id="seekBack" title="-10s">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M11 19V5l-7 7 7 7zM20 19V5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <!-- Upload (new icon) -->
+          <label class="label-btn" for="fileInput" title="Upload video/audio">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align:middle;margin-right:6px">
+              <path d="M12 3v10" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5 12l7-9 7 9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 21H3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Upload
+          </label>
+          <input id="fileInput" type="file" accept="video/*,audio/*" multiple style="display:none">
+
+          <!-- Subtitles import (new icon) -->
+          <label class="label-btn" for="subInput" title="Import subtitles (srt, vtt, ass)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="vertical-align:middle;margin-right:6px">
+              <path d="M3 5h18v10H3z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M7 9h10M7 13h6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Subtitles
+          </label>
+          <input id="subInput" type="file" accept=".srt,.vtt,.ass,.ssa,.txt" multiple style="display:none">
+
+          <!-- Toggle subtitles -->
+          <button class="label-btn" id="toggleSub">Toggle Sub</button>
+        </div>
+
+        <div class="right">
+          <!-- Speed presets -->
+          <div class="speed-group" id="speedGroup" aria-label="Playback speeds">
+            <button class="speed" data-speed="0.25">0.25x</button>
+            <button class="speed" data-speed="0.5">0.5x</button>
+            <button class="speed active" data-speed="1">1x</button>
+            <button class="speed" data-speed="1.5">1.5x</button>
+            <button class="speed" data-speed="2">2x</button>
+            <button class="speed" data-speed="3">3x</button>
+            <button class="speed" data-speed="5">5x</button>
+            <button class="speed" data-speed="10">10x</button>
+          </div>
+
+          <!-- PiP (new icon) -->
+          <button class="icon-btn" id="pip" title="Picture-in-Picture (P)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <rect x="3" y="3" width="18" height="14" rx="2" ry="2" stroke-width="1.6"/>
+              <rect x="8" y="8" width="8" height="6" stroke-width="1.6"/>
+            </svg>
+          </button>
+
+          <!-- Fullscreen (new icon) -->
+          <button class="icon-btn" id="fullscreen" title="Fullscreen (F)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M3 9V3h6" stroke-width="1.6"/><path d="M21 15v6h-6" stroke-width="1.6"/>
+              <path d="M21 3v6h-6" stroke-width="1.6"/><path d="M3 15h6v6H3" stroke-width="1.6"/>
+            </svg>
+          </button>
+
+          <!-- Shortcuts editor (new icon) -->
+          <button class="icon-btn" id="shortcutsBtn" title="Shortcuts">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M12 2v4M12 18v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M2 12h4M18 12h4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <!-- Settings (new gear icon) -->
+          <button class="icon-btn" id="settingsBtn" title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z" stroke-width="1.6"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 1 1 2.3 16.88l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.7 0 1.3-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82L4.3 3.7A2 2 0 1 1 7.13.87l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V0a2 2 0 1 1 4 0v.09c.7 0 1.3.4 1.51 1a1.65 1.65 0 0 0 1.82.33l.06-.06A2 2 0 1 1 21.7 7.12l-.06.06a1.65 1.65 0 0 0-.33 1.82c.2.6.8 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.7 0-1.3.4-1.51 1z" stroke-width="0.6"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Smooth timeline -->
+      <div class="time-row">
+        <div class="muted" id="currentTime">00:00</div>
+        <div class="timeline" id="timeline" aria-label="Seek timeline">
+          <div class="buffer" id="bufferBar"></div>
+          <div class="progress" id="progressBar"></div>
+          <div class="thumb" id="thumb"></div>
+        </div>
+        <div class="muted" id="duration">00:00</div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div class="muted">Drag & drop files to load; double-click video to toggle fullscreen</div>
+        <div class="playlist" id="playlist" aria-label="Playlist"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen bottom control panel (fuller full screen mode) -->
+  <div class="fullscreen-controls" id="fsPanel" aria-hidden="true">
+    <div class="left">
+      <button class="icon-btn" id="fsPlay" title="Play/Pause (Space)">
+        <svg id="fsPlayIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M5 3v18l15-9L5 3z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="fsBack" title="-5s (Left)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M11 19V5l-7 7 7 7zM20 19V5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="center">
+      <div style="width:100%;margin:0 8px">
+        <div class="timeline" id="fsTimeline" aria-hidden="false">
+          <div class="buffer" id="fsBuffer"></div>
+          <div class="progress" id="fsProgress"></div>
+          <div class="thumb" id="fsThumb"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="muted" id="fsTime">00:00 / 00:00</div>
+      <button class="icon-btn" id="fsExit" title="Exit Fullscreen (F)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M21 15v6h-6" stroke-width="1.6"/><path d="M3 9V3h6" stroke-width="1.6"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Shortcuts modal -->
+  <div class="modal" id="shortcutsModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <h3 style="margin:0 0 12px 0">Keyboard Shortcuts — Edit and Save</h3>
+      <div class="modal-grid" id="shortcutsGrid"></div>
+      <div class="modal-actions">
+        <button class="label-btn" id="resetShortcuts">Reset Defaults</button>
+        <button class="label-btn" id="closeShortcuts">Close</button>
+        <button class="label-btn" id="saveShortcuts">Save</button>
+      </div>
+      <p class="muted" style="margin-top:10px">Use key names like Space, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, f, p, m. Volume actions accept +/- adjustments.</p>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal" id="settingsModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <h3 style="margin:0 0 12px 0">Player Settings</h3>
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:12px">
+        <div>
+          <div style="margin-bottom:12px">
+            <label class="muted">Volume</label>
+            <input id="volume" type="range" min="0" max="1" step="0.01" value="1" style="width:100%">
+          </div>
+
+          <div style="margin-bottom:12px">
+            <label class="muted">Subtitle Appearance</label>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+              <input id="subFontSize" type="number" min="10" max="72" value="20" style="width:80px;padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+              <input id="subColor" type="color" value="#ffffff" style="width:56px;height:40px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent">
+              <input id="subBg" type="color" value="#000000" style="width:56px;height:40px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent">
+            </div>
+            <div style="margin-top:8px">
+              <label class="muted">Background Opacity</label>
+              <input id="subBgOpacity" type="range" min="0" max="1" step="0.01" value="0.35" style="width:100%">
+            </div>
+            <div style="margin-top:8px">
+              <label class="muted">Vertical Position (%)</label>
+              <input id="subPosition" type="range" min="0" max="30" step="1" value="6" style="width:100%">
+            </div>
+          </div>
+
+          <div>
+            <label class="muted">Subtitle Timing (ms)</label>
+            <input id="subDelay" type="number" value="0" style="width:120px;padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+          </div>
+        </div>
+
+        <div>
+          <div style="margin-bottom:12px">
+            <label class="muted">Quick Actions</label>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+              <button class="label-btn" id="downloadSubs">Download Subtitles (VTT)</button>
+              <button class="label-btn" id="clearSubs">Clear Subtitles</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="muted">Advanced</label>
+            <div style="margin-top:8px">
+              <label class="muted">Translation API (optional)</label>
+              <input id="translateEndpoint" type="text" placeholder="https://libretranslate.com/translate" style="width:100%;padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+              <small class="muted" style="display:block;margin-top:6px">Optional endpoint for subtitle translation workflows.</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="label-btn" id="closeSettings">Close</button>
+        <button class="label-btn" id="applySettings">Apply</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Advanced player script
+   - Fullscreen forced to 1440×900 (CSS) when player element enters fullscreen
+   - Upload & subtitle import buttons
+   - Smooth timeline with buffer and progress (main + fullscreen)
+   - Fullscreen bottom control panel (fuller full screen)
+   - Shortcuts editor (editable, saved to localStorage)
+   - Subtitle parsing (SRT/VTT/ASS), styling, download
+   - Playback speeds, PiP, playlist, drag & drop
+   - New icons used across UI
+*/
+
+/* Helpers */
+const $ = id => document.getElementById(id);
+const fmt = s => {
+  if (!isFinite(s)) return '00:00';
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return h>0 ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+};
+
+/* Elements */
+const player = $('player');
+const video = $('video');
+const playPause = $('playPause');
+const playIcon = $('playIcon');
+const seekBack = $('seekBack');
+const fileInput = $('fileInput');
+const subInput = $('subInput');
+const toggleSub = $('toggleSub');
+const speedGroup = $('speedGroup');
+const pipBtn = $('pip');
+const fullscreenBtn = $('fullscreen');
+const shortcutsBtn = $('shortcutsBtn');
+const shortcutsModal = $('shortcutsModal');
+const shortcutsGrid = $('shortcutsGrid');
+const saveShortcutsBtn = $('saveShortcuts');
+const closeShortcutsBtn = $('closeShortcuts');
+const resetShortcutsBtn = $('resetShortcuts');
+const timeline = $('timeline');
+const bufferBar = $('bufferBar');
+const progressBar = $('progressBar');
+const thumb = $('thumb');
+const currentTimeEl = $('currentTime');
+const durationEl = $('duration');
+const playlistEl = $('playlist');
+const subtitleText = $('subtitleText');
+const subtitleOverlay = $('subtitleOverlay');
+const settingsBtn = $('settingsBtn');
+const settingsModal = $('settingsModal');
+const closeSettings = $('closeSettings');
+const applySettings = $('applySettings');
+const volumeInput = $('volume');
+const subFontSize = $('subFontSize');
+const subColor = $('subColor');
+const subBg = $('subBg');
+const subBgOpacity = $('subBgOpacity');
+const subPosition = $('subPosition');
+const subDelay = $('subDelay');
+const downloadSubs = $('downloadSubs');
+const clearSubs = $('clearSubs');
+const translateEndpoint = $('translateEndpoint');
+
+const fsPanel = $('fsPanel');
+const fsPlay = $('fsPlay');
+const fsPlayIcon = $('fsPlayIcon');
+const fsBack = $('fsBack');
+const fsTimeline = $('fsTimeline');
+const fsBuffer = $('fsBuffer');
+const fsProgress = $('fsProgress');
+const fsThumb = $('fsThumb');
+const fsTime = $('fsTime');
+const fsExit = $('fsExit');
+
+/* State */
+let playlist = [];
+let currentIndex = -1;
+let subtitles = []; // {start,end,text}
+let subEnabled = true;
+let generatedVTT = '';
+let subOffsetMs = 0;
+
+/* Shortcuts */
+const DEFAULT_SHORTCUTS = {
+  PlayPause: 'Space',
+  SeekBackSmall: 'ArrowLeft',
+  SeekForwardSmall: 'ArrowRight',
+  VolumeUp: 'ArrowUp',
+  VolumeDown: 'ArrowDown',
+  Fullscreen: 'f',
+  PiP: 'p',
+  Mute: 'm'
+};
+let shortcuts = loadShortcuts();
+
+/* Init */
+function init(){
+  // Play/pause
+  playPause.addEventListener('click', togglePlay);
+  fsPlay.addEventListener('click', togglePlay);
+
+  // Seek back
+  seekBack.addEventListener('click', ()=> { video.currentTime = Math.max(0, video.currentTime - 10); });
+  fsBack.addEventListener('click', ()=> { video.currentTime = Math.max(0, video.currentTime - 5); });
+
+  // Upload & subtitles
+  fileInput.addEventListener('change', handleFiles);
+  subInput.addEventListener('change', handleSubFiles);
+
+  // Toggle subtitles
+  toggleSub.addEventListener('click', ()=> { subEnabled = !subEnabled; updateSubtitleVisibility(); });
+
+  // Speed buttons
+  speedGroup.querySelectorAll('.speed').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const s = parseFloat(btn.dataset.speed);
+      video.playbackRate = s;
+      speedGroup.querySelectorAll('.speed').forEach(b=>b.classList.toggle('active', parseFloat(b.dataset.speed)===s));
+    });
+  });
+
+  // PiP
+  pipBtn.addEventListener('click', togglePiP);
+
+  // Fullscreen (player-level)
+  fullscreenBtn.addEventListener('click', toggleFullscreenMode);
+  fsExit.addEventListener('click', toggleFullscreenMode);
+
+  // Shortcuts modal
+  shortcutsBtn.addEventListener('click', openShortcuts);
+  closeShortcutsBtn.addEventListener('click', closeShortcuts);
+  saveShortcutsBtn.addEventListener('click', saveShortcuts);
+  resetShortcutsBtn.addEventListener('click', resetShortcuts);
+
+  // Settings modal
+  settingsBtn.addEventListener('click', ()=> openModal(settingsModal));
+  closeSettings.addEventListener('click', ()=> closeModal(settingsModal));
+  applySettings.addEventListener('click', applySettingsHandler);
+
+  // Volume
+  volumeInput.addEventListener('input', ()=> video.volume = parseFloat(volumeInput.value));
+
+  // Timeline interactions (main)
+  setupTimeline(timeline, progressBar, bufferBar, thumb, (pos)=> {
+    if (!video.duration) return;
+    video.currentTime = pos * video.duration;
+  });
+
+  // Timeline interactions (fullscreen)
+  setupTimeline(fsTimeline, fsProgress, fsBuffer, fsThumb, (pos)=> {
+    if (!video.duration) return;
+    video.currentTime = pos * video.duration;
+  });
+
+  // Video events
+  video.addEventListener('loadedmetadata', onLoaded);
+  video.addEventListener('timeupdate', onTimeUpdate);
+  video.addEventListener('progress', updateBuffer);
+  video.addEventListener('play', updatePlayIcons);
+  video.addEventListener('pause', updatePlayIcons);
+  video.addEventListener('dblclick', toggleFullscreenMode);
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(e=>document.addEventListener(e, ev=>{ ev.preventDefault(); ev.stopPropagation(); }));
+  document.addEventListener('drop', ev=>{
+    ev.preventDefault(); ev.stopPropagation();
+    const files = Array.from(ev.dataTransfer.files || []);
+    if (!files.length) return;
+    const vids = files.filter(f => f.type.startsWith('video') || f.type.startsWith('audio'));
+    if (vids.length){
+      addToPlaylist(vids);
+      loadIndex(playlist.length - vids.length);
+    }
+    const subs = files.filter(f => /\.(srt|vtt|ass|ssa|txt)$/i.test(f.name));
+    if (subs.length) readSubtitleFiles(subs);
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', handleKeyDown);
+
+  // Fullscreen change listener to show/hide fsPanel
+  document.addEventListener('fullscreenchange', ()=>{
+    const isFs = document.fullscreenElement === player;
+    if (isFs){
+      fsPanel.style.display = 'flex';
+      fsPanel.setAttribute('aria-hidden','false');
+      subtitleOverlay.style.bottom = 'calc(var(--control-height) + 10%)';
+    } else {
+      fsPanel.style.display = 'none';
+      fsPanel.setAttribute('aria-hidden','true');
+      subtitleOverlay.style.bottom = 'calc(var(--control-height) + 6%)';
+    }
+  });
+
+  // Initialize UI
+  updateSubtitleVisibility();
+  applySettingsHandler();
+  renderShortcutsEditor();
+}
+init();
+
+/* Timeline utility */
+function setupTimeline(container, progressEl, bufferEl, thumbEl, onSeek){
+  let dragging = false;
+  function updateFromEvent(e){
+    const rect = container.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const pos = Math.max(0, Math.min(1, x / rect.width));
+    progressEl.style.width = (pos*100) + '%';
+    thumbEl.style.left = (pos*100) + '%';
+    return pos;
+  }
+  container.addEventListener('mousedown', (e)=>{
+    dragging = true;
+    const pos = updateFromEvent(e);
+    onSeek(pos);
+  });
+  window.addEventListener('mousemove', (e)=>{
+    if (!dragging) return;
+    const pos = updateFromEvent(e);
+    onSeek(pos);
+  });
+  window.addEventListener('mouseup', ()=> dragging = false);
+
+  // touch
+  container.addEventListener('touchstart', (e)=>{
+    const pos = updateFromEvent(e);
+    onSeek(pos);
+  }, {passive:true});
+  container.addEventListener('touchmove', (e)=>{
+    const pos = updateFromEvent(e);
+    onSeek(pos);
+  }, {passive:true});
+}
+
+/* Playback controls */
+function togglePlay(){
+  if (!video.src){ alert('Drop a video file onto the player to load and play.'); return; }
+  if (video.paused) video.play().catch(()=>{});
+  else video.pause();
+}
+function updatePlayIcons(){
+  const playing = !video.paused && !video.ended;
+  const playSvg = playing
+    ? '<path d="M6 19h4V5H6v14zM14 5v14h4V5h-4z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+    : '<path d="M5 3v18l15-9L5 3z" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+  playIcon.innerHTML = playSvg;
+  fsPlayIcon.innerHTML = playSvg;
+  // ensure fsPlay's svg content updates
+  const fsSvg = fsPlay.querySelector('svg');
+  if (fsSvg) fsSvg.innerHTML = playSvg;
+}
+
+/* File handling & playlist */
+function handleFiles(e){
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  const vids = files.filter(f => f.type.startsWith('video') || f.type.startsWith('audio'));
+  addToPlaylist(vids);
+  if (currentIndex === -1) loadIndex(0);
+  fileInput.value = '';
+}
+function addToPlaylist(files){
+  files.forEach(f=>{
+    const url = URL.createObjectURL(f);
+    playlist.push({name:f.name, url, file:f});
+  });
+  renderPlaylist();
+}
+function renderPlaylist(){
+  playlistEl.innerHTML = '';
+  playlist.forEach((it, idx)=>{
+    const d = document.createElement('div');
+    d.className = 'pl-item' + (idx===currentIndex ? ' active' : '');
+    d.textContent = it.name;
+    d.title = it.name;
+    d.addEventListener('click', ()=> loadIndex(idx));
+    playlistEl.appendChild(d);
+  });
+}
+function loadIndex(i){
+  if (i < 0 || i >= playlist.length) return;
+  currentIndex = i;
+  const it = playlist[i];
+  video.src = it.url;
+  video.load();
+  video.play().catch(()=>{});
+  renderPlaylist();
+}
+
+/* Subtitles parsing & handling */
+function handleSubFiles(e){
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  readSubtitleFiles(files);
+  subInput.value = '';
+}
+function readSubtitleFiles(files){
+  files.forEach(f=>{
+    const r = new FileReader();
+    r.onload = ()=> {
+      const text = r.result.replace(/\r/g,'');
+      let cues = [];
+      const name = f.name.toLowerCase();
+      if (name.endsWith('.srt')) cues = parseSRT(text);
+      else if (name.endsWith('.vtt')) cues = parseVTT(text);
+      else if (name.endsWith('.ass')||name.endsWith('.ssa')) cues = parseASS(text);
+      else cues = parseSRT(text);
+      subtitles = subtitles.concat(cues).sort((a,b)=>a.start - b.start);
+      buildVTT();
+      alert(`Imported ${cues.length} subtitle cues from ${f.name}`);
+    };
+    r.readAsText(f);
+  });
+}
+function parseSRT(text){
+  const parts = text.split('\n\n');
+  const cues = [];
+  for (const p of parts){
+    const lines = p.trim().split('\n').filter(Boolean);
+    if (lines.length<2) continue;
+    let idx = 0;
+    if (/^\d+$/.test(lines[0])) idx = 1;
+    const m = lines[idx].match(/(\d{2}:\d{2}:\d{2}[.,]\d{3})\s*--?>\s*(\d{2}:\d{2}:\d{2}[.,]\d{3})/);
+    if (!m) continue;
+    const toSec = t => {
+      const parts = t.replace(',', '.').split(':');
+      return parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseFloat(parts[2]);
+    };
+    const start = toSec(m[1]), end = toSec(m[2]);
+    const textLines = lines.slice(idx+1).join('\n');
+    cues.push({start,end,text:textLines});
+  }
+  return cues;
+}
+function parseVTT(text){
+  text = text.replace(/^WEBVTT.*\n*/i,'');
+  return parseSRT(text);
+}
+function parseASS(text){
+  const lines = text.split('\n');
+  const cues = [];
+  for (const l of lines){
+    if (l.startsWith('Dialogue:')){
+      const parts = l.split(',');
+      if (parts.length>9){
+        const start = parseASSTime(parts[1]), end = parseASSTime(parts[2]);
+        const txt = parts.slice(9).join(',').replace(/{.*?}/g,'').replace(/\\N/g,'\n');
+        cues.push({start,end,text:txt});
+      }
+    }
+  }
+  function parseASSTime(t){
+    const m = t.trim().match(/(\d+):(\d{2}):(\d{2})[.](\d{2})/);
+    if (!m) return 0;
+    return parseInt(m[1])*3600 + parseInt(m[2])*60 + parseInt(m[3]) + parseInt(m[4])/100;
+  }
+  return cues;
+}
+function renderSubtitleAt(time){
+  if (!subEnabled || !subtitles.length){ subtitleText.style.display = 'none'; return; }
+  const t = time + (parseInt(subDelay.value || 0,10)/1000);
+  const cue = subtitles.find(c => t >= c.start && t <= c.end);
+  if (cue){ subtitleText.style.display = 'block'; subtitleText.innerText = cue.text; }
+  else subtitleText.style.display = 'none';
+}
+function updateSubtitleVisibility(){
+  subtitleOverlay.style.display = subEnabled ? 'flex' : 'none';
+}
+
+/* Build VTT for download */
+function buildVTT(){
+  let v = 'WEBVTT\n\n';
+  subtitles.forEach(c=>{
+    const toV = s => {
+      const hh = Math.floor(s/3600), mm = Math.floor((s%3600)/60), ss = Math.floor(s%60);
+      const ms = Math.floor((s - Math.floor(s)) * 1000);
+      return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+    };
+    v += `${toV(c.start)} --> ${toV(c.end)}\n${c.text}\n\n`;
+  });
+  generatedVTT = v;
+}
+downloadSubs.addEventListener('click', ()=>{
+  if (!generatedVTT) buildVTT();
+  const blob = new Blob([generatedVTT], {type:'text/vtt'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'subtitles.vtt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+clearSubs.addEventListener('click', ()=>{
+  subtitles = [];
+  generatedVTT = '';
+  subtitleText.style.display = 'none';
+  alert('Subtitles cleared');
+});
+
+/* Video events */
+function onLoaded(){
+  durationEl.textContent = fmt(video.duration);
+  updateBuffer();
+}
+function onTimeUpdate(){
+  currentTimeEl.textContent = fmt(video.currentTime);
+  const pct = (video.currentTime / (video.duration || 1)) * 100;
+  progressBar.style.width = pct + '%';
+  thumb.style.left = pct + '%';
+  // fullscreen timeline
+  fsProgress.style.width = pct + '%';
+  fsThumb.style.left = pct + '%';
+  fsTime.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
+  renderSubtitleAt(video.currentTime);
+}
+
+/* Buffer update */
+function updateBuffer(){
+  try {
+    if (!video.buffered || !video.duration) return;
+    const end = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
+    const pct = (end / video.duration) * 100;
+    bufferBar.style.width = pct + '%';
+    fsBuffer.style.width = pct + '%';
+  } catch(e){}
+}
+
+/* PiP */
+async function togglePiP(){
+  if (!('pictureInPictureEnabled' in document)) { alert('PiP not supported'); return; }
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else await video.requestPictureInPicture();
+  } catch(e){ console.warn(e); }
+}
+
+/* Fullscreen mode with bottom control panel */
+async function toggleFullscreenMode(){
+  const isFs = document.fullscreenElement === player;
+  if (!isFs){
+    try {
+      await player.requestFullscreen();
+      // fsPanel will be shown by fullscreenchange listener
+    } catch(e){ console.warn(e); }
+  } else {
+    try {
+      await document.exitFullscreen();
+    } catch(e){ console.warn(e); }
+  }
+}
+
+/* Keyboard shortcuts management */
+function loadShortcuts(){
+  try {
+    const raw = localStorage.getItem('player_shortcuts_v3');
+    if (raw) return JSON.parse(raw);
+  } catch(e){}
+  return {...DEFAULT_SHORTCUTS};
+}
+function saveShortcuts(){
+  const inputs = shortcutsGrid.querySelectorAll('input[data-key]');
+  inputs.forEach(inp => {
+    const k = inp.dataset.key;
+    const v = inp.value.trim();
+    if (v) shortcuts[k] = v;
+  });
+  localStorage.setItem('player_shortcuts_v3', JSON.stringify(shortcuts));
+  closeShortcuts();
+  alert('Shortcuts saved');
+}
+function resetShortcuts(){
+  if (!confirm('Reset shortcuts to defaults?')) return;
+  shortcuts = {...DEFAULT_SHORTCUTS};
+  localStorage.setItem('player_shortcuts_v3', JSON.stringify(shortcuts));
+  renderShortcutsEditor();
+}
+function renderShortcutsEditor(){
+  shortcutsGrid.innerHTML = '';
+  Object.keys(shortcuts).forEach(k=>{
+    const row = document.createElement('div');
+    row.className = 'shortcut-row';
+    const label = document.createElement('div');
+    label.textContent = k;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = shortcuts[k];
+    input.dataset.key = k;
+    input.title = 'Press a key while focused to capture it';
+    input.addEventListener('keydown', (ev)=>{
+      ev.preventDefault();
+      const name = normalizeKeyName(ev);
+      input.value = name;
+    });
+    row.appendChild(label);
+    row.appendChild(input);
+    shortcutsGrid.appendChild(row);
+  });
+}
+function openShortcuts(){ shortcutsModal.classList.add('open'); shortcutsModal.setAttribute('aria-hidden','false'); renderShortcutsEditor(); }
+function closeShortcuts(){ shortcutsModal.classList.remove('open'); shortcutsModal.setAttribute('aria-hidden','true'); }
+
+/* Key normalization */
+function normalizeKeyName(ev){
+  if (ev.code === 'Space') return 'Space';
+  if (ev.key.startsWith('Arrow')) return ev.key;
+  return ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+}
+
+/* Keydown handler */
+function handleKeyDown(e){
+  const tag = document.activeElement && document.activeElement.tagName.toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+
+  function match(mapping){
+    if (!mapping) return false;
+    const map = mapping.toLowerCase();
+    if (map === 'space' && e.code === 'Space') return true;
+    if (map.startsWith('arrow') && e.key.toLowerCase() === map) return true;
+    if (map.length === 1 && e.key.toLowerCase() === map) return true;
+    if (map === e.key.toLowerCase()) return true;
+    return false;
+  }
+
+  if (match(shortcuts.PlayPause)){ e.preventDefault(); togglePlay(); return; }
+  if (match(shortcuts.SeekBackSmall)){ e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 5); return; }
+  if (match(shortcuts.SeekForwardSmall)){ e.preventDefault(); video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5); return; }
+  if (match(shortcuts.VolumeUp)){ e.preventDefault(); video.volume = Math.min(1, +(video.volume + 0.05).toFixed(2)); volumeInput.value = video.volume; return; }
+  if (match(shortcuts.VolumeDown)){ e.preventDefault(); video.volume = Math.max(0, +(video.volume - 0.05).toFixed(2)); volumeInput.value = video.volume; return; }
+  if (match(shortcuts.Fullscreen)){ e.preventDefault(); toggleFullscreenMode(); return; }
+  if (match(shortcuts.PiP)){ e.preventDefault(); togglePiP(); return; }
+  if (match(shortcuts.Mute)){ e.preventDefault(); video.muted = !video.muted; return; }
+}
+
+/* Settings modal helpers */
+function openModal(m){ m.classList.add('open'); m.setAttribute('aria-hidden','false'); }
+function closeModal(m){ m.classList.remove('open'); m.setAttribute('aria-hidden','true'); }
+function applySettingsHandler(){
+  video.volume = parseFloat(volumeInput.value);
+  subtitleText.style.fontSize = (parseInt(subFontSize.value || 20,10)) + 'px';
+  subtitleText.style.color = subColor.value;
+  const bg = hexToRgb(subBg.value);
+  subtitleText.style.background = `rgba(${bg.r},${bg.g},${bg.b},${parseFloat(subBgOpacity.value)})`;
+  subtitleOverlay.style.bottom = `${parseInt(subPosition.value,10)}%`;
+  closeModal(settingsModal);
+}
+function hexToRgb(hex){
+  const h = hex.replace('#','');
+  const bigint = parseInt(h,16);
+  return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255};
+}
+
+/* Subtitle import helper for drag/drop */
+function readSubtitleFiles(files){
+  files.forEach(f=>{
+    const r = new FileReader();
+    r.onload = ()=> {
+      const text = r.result.replace(/\r/g,'');
+      let cues = [];
+      const name = f.name.toLowerCase();
+      if (name.endsWith('.srt')) cues = parseSRT(text);
+      else if (name.endsWith('.vtt')) cues = parseVTT(text);
+      else if (name.endsWith('.ass')||name.endsWith('.ssa')) cues = parseASS(text);
+      else cues = parseSRT(text);
+      subtitles = subtitles.concat(cues).sort((a,b)=>a.start - b.start);
+      buildVTT();
+      alert(`Imported ${cues.length} subtitle cues from ${f.name}`);
+    };
+    r.readAsText(f);
+  });
+}
+
+/* Expose some debug functions */
+window._player = {
+  playlist, subtitles, buildVTT, addToPlaylist, loadIndex, shortcuts
+};
+</script><!-- Paste this near the end of your body, before </body> -->
+<script>
+  // Use a selector string or a DOM element. If none provided, use the whole document.
+  function openFullscreen(target) {
+    const elem = typeof target === 'string' ? document.querySelector(target) : (target || document.documentElement);
+    if (!elem) return console.warn('Fullscreen target not found');
+
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen();
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
+    } else {
+      console.warn('Fullscreen API is not supported by this browser');
+    }
+  }
+
+  function closeFullscreen() {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  }
+
+  // Optional helper to toggle fullscreen for a given target
+  function toggleFullscreen(target) {
+    const isFull = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    if (isFull) closeFullscreen();
+    else openFullscreen(target);
+  }
+
+  // Example: attach to existing buttons or elements
+  document.addEventListener('DOMContentLoaded', () => {
+    // If you have a button with id goFullBtn to make the whole page fullscreen
+    const goFullBtn = document.getElementById('goFullBtn');
+    if (goFullBtn) goFullBtn.addEventListener('click', () => openFullscreen());
+
+    // If you have a specific element to fullscreen, e.g., <div id="appArea">
+    const areaFullBtn = document.getElementById('areaFullBtn');
+    if (areaFullBtn) areaFullBtn.addEventListener('click', () => openFullscreen('#appArea'));
+
+    // If you want a single toggle button
+    const toggleBtn = document.getElementById('toggleFullBtn');
+    if (toggleBtn) toggleBtn.addEventListener('click', () => toggleFullscreen('#appArea'));
+  });
+</script>
+
+</body>
+</html>
